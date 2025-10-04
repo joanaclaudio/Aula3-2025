@@ -1,0 +1,63 @@
+/*
+ * Documentação dos Algoritmos de Escalonamento
+ *
+ * 1. FIFO (First-In, First-Out)
+ *
+ * Funcionamento:
+ * - O primeiro processo que entra na fila de prontos é o primeiro a ser executado.
+ * - Não há preempção: o processo só libera a CPU quando termina.
+ * - Implementação simples, utilizando uma fila comum (FIFO).
+ *
+ * Diferenças principais:
+ * - Processos longos podem atrasar processos curtos.
+ * - Ordem de execução baseada apenas no tempo de chegada.
+ * - Sem priorização nem time slice.
+ */
+
+/*
+ * 2. SJF (Shortest Job First)
+ *
+ * Funcionamento:
+ * - Escolhe sempre o processo com menor tempo de execução total (time_ms) disponível na fila.
+ * - Não-preemptivo: o processo corre até terminar.
+ * - Reduz o tempo médio de espera, priorizando processos curtos.
+ *
+ * Diferenças principais:
+ * - Prioriza processos curtos sobre longos.
+ * - Mais eficiente em tempo médio de espera que FIFO.
+ * - Pode ser injusto para processos longos.
+ * - Não utiliza time slice.
+ */
+
+/*
+ * 3. RR (Round-Robin)
+ *
+ * Funcionamento:
+ * - Cada processo recebe um time slice fixo (ex.: 500 ms).
+ * - Se não termina dentro do time slice, é colocado no final da fila.
+ * - Garante acesso periódico de todos os processos à CPU.
+ *
+ * Diferenças principais:
+ * - Preempção baseada em time slice.
+ * - Mantém ordem FIFO dentro da mesma prioridade.
+ * - Mais justo que FIFO e SJF.
+ * - Não prioriza processos curtos ou longos, apenas compartilha a CPU.
+ */
+
+/*
+ * 4. MLFQ (Multi-Level Feedback Queue)
+ *
+ * Funcionamento:
+ * - Vários níveis de prioridade (ex.: 3 níveis).
+ * - Processos iniciam no nível mais alto.
+ * - Se um processo consome todo o time slice, é rebaixado para a fila de prioridade inferior.
+ * - CPU escolhe sempre a fila de maior prioridade não vazia.
+ * - Combina RR dentro de cada nível e prioridade dinâmica.
+ *
+ * Diferenças principais:
+ * - Prioridade dinâmica: processos que usam muito tempo são penalizados.
+ * - Preempção baseada em time slice e nível de prioridade.
+ * - Processos curtos permanecem em filas altas.
+ * - Mais complexo de implementar.
+ * - Combina justiça do RR com priorização adaptativa.
+ */

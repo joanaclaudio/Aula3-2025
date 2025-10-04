@@ -13,9 +13,12 @@
 #include <sys/errno.h>
 
 #include "fifo.h"
+#include "mlfq.h"
 
 #include "msg.h"
 #include "queue.h"
+#include "rr.h"
+#include "sjf.h"
 
 static uint32_t PID = 0;
 
@@ -81,7 +84,15 @@ int setup_server_socket(const char *socket_path) {
  * @param command_queue The queue to which new pcb will be added
  * @param server_fd The server socket file descriptor
  */
-void check_new_commands(queue_t *command_queue, queue_t *blocked_queue, queue_t *ready_queue, int server_fd, uint32_t current_time_ms) {
+typedef enum  {
+    NULL_SCHEDULER = -1,
+    SCHED_FIFO = 0,
+    SCHED_SJF,
+    SCHED_RR,
+    SCHED_MLFQ
+} scheduler_en;
+
+void check_new_commands(queue_t *command_queue, queue_t *blocked_queue, queue_t *ready_queue, queue_t mlfq_rq[],scheduler_en scheduler_type, int server_fd, uint32_t current_time_ms) {
     // Accept new client connections
     int client_fd;
     do {
@@ -146,7 +157,12 @@ void check_new_commands(queue_t *command_queue, queue_t *blocked_queue, queue_t 
             current_pcb->time_ms = msg.time_ms;
             current_pcb->ellapsed_time_ms = 0;
             current_pcb->status = TASK_RUNNING;
-            enqueue_pcb(ready_queue, current_pcb);
+            if (scheduler_type == SCHED_MLFQ) {
+                enqueue_pcb(&mlfq_rq[0], current_pcb); // nível 0 da MLFQ
+            } else {
+                enqueue_pcb(ready_queue, current_pcb); // para FIFO, RR ou SJF
+            }
+
             DBG("Process %d requested RUN for %d ms\n", current_pcb->pid, current_pcb->time_ms);
         } else if (msg.request == PROCESS_REQUEST_BLOCK) {
             current_pcb->pid = msg.pid; // Set the pid from the message
@@ -233,21 +249,13 @@ void check_blocked_queue(queue_t * blocked_queue, queue_t * command_queue, uint3
 
 static const char *SCHEDULER_NAMES[] = {
     "FIFO",
-/*
     "SJF",
     "RR",
     "MLFQ",
-*/
     NULL
 };
 
-typedef enum  {
-    NULL_SCHEDULER = -1,
-    SCHED_FIFO = 0,
-    SCHED_SJF,
-    SCHED_RR,
-    SCHED_MLFQ
-} scheduler_en;
+
 
 scheduler_en get_scheduler(const char *name) {
     for (int i = 0; SCHEDULER_NAMES[i] != NULL; i++) {
@@ -263,6 +271,16 @@ scheduler_en get_scheduler(const char *name) {
 }
 
 int main(int argc, char *argv[]) {
+
+    #define MLFQ_LEVELS 3
+    queue_t mlfq_rq[MLFQ_LEVELS];
+    int current_level = 0;
+
+    // Inicializa todas as filas MLFQ
+    for (int i = 0; i < MLFQ_LEVELS; i++) {
+        mlfq_rq[i].head = NULL;
+        mlfq_rq[i].tail = NULL;
+    }
     if (argc != 2) {
         printf("Usage: %s <scheduler>\nScheduler options: FIFO", argv[0]);
         exit(EXIT_FAILURE);
@@ -294,7 +312,7 @@ int main(int argc, char *argv[]) {
     uint32_t current_time_ms = 0;
     while (1) {
         // Check for new connections and/or instructions
-        check_new_commands(&command_queue, &blocked_queue, &ready_queue, server_fd, current_time_ms);
+        check_new_commands(&command_queue, &blocked_queue, &ready_queue,mlfq_rq, scheduler_type, server_fd, current_time_ms);
 
         if (current_time_ms%1000 == 0) {
             printf("Current time: %d s\n", current_time_ms/1000);
@@ -303,12 +321,21 @@ int main(int argc, char *argv[]) {
         check_blocked_queue(&blocked_queue, &command_queue, current_time_ms);
         // Tasks from the blocked queue could be moved to the command queue, check again
         usleep(TICKS_MS * 1000/2);
-        check_new_commands(&command_queue, &blocked_queue, &ready_queue, server_fd, current_time_ms);
+        check_new_commands(&command_queue, &blocked_queue, &ready_queue,mlfq_rq, scheduler_type, server_fd, current_time_ms);
 
         // The scheduler handles the READY queue
         switch (scheduler_type) {
             case SCHED_FIFO:
                 fifo_scheduler(current_time_ms, &ready_queue, &CPU);
+                break;
+            case SCHED_SJF:
+                sjf_scheduler(current_time_ms, &ready_queue, &CPU);
+                break;
+            case SCHED_RR:
+                rr_scheduler(current_time_ms, &ready_queue, &CPU);
+                break;
+            case SCHED_MLFQ:
+                mlfq_scheduler(current_time_ms, mlfq_rq, &CPU, &current_level);
                 break;
 
             default:
